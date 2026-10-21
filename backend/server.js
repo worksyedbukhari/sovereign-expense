@@ -55,6 +55,7 @@ async function startServer() {
       const user = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
       if (!Number.isInteger(user.id) || user.id <= 0) return next(new Error('Invalid identity'));
       socket.data.userId = user.id;
+      socket.data.userName = typeof user.name === 'string' ? user.name : 'Member';
       next();
     } catch (error) {
       next(new Error('Invalid authentication'));
@@ -98,7 +99,7 @@ async function startServer() {
           socket.leave(`group_${Number(groupId)}`);
           return;
         }
-        socket.to(`group_${Number(groupId)}`).emit(event, { username: socket.data.userId });
+        socket.to(`group_${Number(groupId)}`).emit(event, { username: socket.data.userName });
       } catch (_) { /* Do not relay on database failure. */ }
     };
     socket.on('typing', (data) => relayTyping('user_typing', data && data.groupId));
