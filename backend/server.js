@@ -5,6 +5,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const jwt = require('jsonwebtoken');
+const { configuredOrigins, permittedOrigin } = require('./utils/originPolicy');
 const { get } = require('./database');
 const { initDatabase } = require('./database');
 
@@ -25,17 +26,26 @@ async function startServer() {
 
   const app = express();
   const server = http.createServer(app);
+  const origins = configuredOrigins();
   const io = new Server(server, {
     cors: {
-      origin: '*',
+      origin: (origin, next) => next(null, !origin || origins.has(origin)),
       methods: ['GET', 'POST']
-    }
+    },
+    // WebSocket handshakes are not protected by browser CORS checks.
+    allowRequest: (request, next) => next(
+      null, permittedOrigin(request.headers.origin, request.headers.host, origins)
+    )
   });
 
   app.set('io', io);
 
-  app.use(cors());
-  app.use(express.json());
+  app.use(cors((req, next) => {
+    const origin = req.headers.origin;
+    const allowed = permittedOrigin(origin, req.headers.host, origins);
+    next(null, { origin: allowed && origin ? origin : false });
+  }));
+  app.use(express.json({ limit: '100kb' }));
 
   app.use('/api/auth', authRoutes);
   app.use('/api/groups', groupRoutes);
