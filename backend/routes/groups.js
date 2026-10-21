@@ -1,6 +1,7 @@
 const express = require('express');
 const { run, get, all, withTransaction } = require('../database');
 const authenticate = require('../middleware/auth');
+const { groupBalances } = require('../utils/balances');
 
 const router = express.Router();
 
@@ -180,42 +181,30 @@ router.delete('/:id/members/:userId', authenticate, requireGroupAdmin, async (re
 
 router.get('/:id/balances', authenticate, async (req, res) => {
   try {
-    const membership = await get('SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    const membership = await get(
+      'SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2',
+      [req.params.id, req.user.id]
+    );
     if (!membership) return res.status(403).json({ error: 'Not a member of this group' });
-    const expenses = await all('SELECT * FROM expenses WHERE group_id = $1', [req.params.id]);
-    const balances = {};
 
-    for (const expense of expenses) {
-      const splits = await all('SELECT * FROM expense_splits WHERE expense_id = $1', [expense.id]);
-      if (!balances[expense.paid_by]) balances[expense.paid_by] = 0;
-
-      for (const split of splits) {
-        if (split.user_id === expense.paid_by) continue;
-        if (!balances[split.user_id]) balances[split.user_id] = 0;
-        if (!split.is_settled) {
-          balances[expense.paid_by] += split.amount;
-          balances[split.user_id] -= split.amount;
-        }
-      }
-    }
-
-    const members = await all(`
-      SELECT u.id, u.name
-      FROM users u
-      JOIN group_members gm ON u.id = gm.user_id
-      WHERE gm.group_id = $1
+    const rows = await all(`
+      SELECT e.paid_by, es.user_id, es.amount, es.is_settled
+      FROM expenses e
+      JOIN expense_splits es ON es.expense_id = e.id
+      WHERE e.group_id = $1 AND es.user_id != e.paid_by
     `, [req.params.id]);
+    const balances = groupBalances(rows);
+    if (!balances.length) return res.json([]);
 
-    const memberMap = {};
-    members.forEach(m => { memberMap[m.id] = m.name; });
-
-    const result = Object.entries(balances).map(([userId, balance]) => ({
-      userId: parseInt(userId),
-      name: memberMap[parseInt(userId)] || 'Unknown',
-      balance: Math.round(balance * 100) / 100
-    }));
-
-    res.json(result);
+    const users = await all(
+      'SELECT u.id, u.name FROM users u JOIN group_members gm ON gm.user_id = u.id WHERE gm.group_id = $1',
+      [req.params.id]
+    );
+    const memberMap = new Map(users.map(user => [user.id, user.name]));
+    res.json(balances.map(row => ({
+      ...row,
+      name: memberMap.get(row.userId) || 'Unknown'
+    })));
   } catch (err) {
     console.error('GET /groups/:id/balances error:', err);
     res.status(500).json({ error: 'Failed to fetch balances' });
