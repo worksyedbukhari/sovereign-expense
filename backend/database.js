@@ -43,6 +43,9 @@ async function initDatabase() {
     )
   `);
 
+  await pool.query('ALTER TABLE otps ADD COLUMN IF NOT EXISTS verified INTEGER NOT NULL DEFAULT 0');
+  await pool.query('ALTER TABLE otps ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0');
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS groups (
       id SERIAL PRIMARY KEY,
