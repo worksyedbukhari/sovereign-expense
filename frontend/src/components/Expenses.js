@@ -82,14 +82,10 @@ export default function Expenses() {
     if (!newExpense.amount || parseFloat(newExpense.amount) <= 0) { setError('Valid amount is required'); return; }
 
     try {
-      const splits = groupMembers.length > 0
-        ? groupMembers.map(m => ({ user_id: m.id, amount: parseFloat(newExpense.amount) / groupMembers.length }))
-        : [{ user_id: user.id, amount: parseFloat(newExpense.amount) }];
-
       await api.post('/expenses', {
         group_id: parseInt(groupId), description: newExpense.description,
         amount: parseFloat(newExpense.amount), category: newExpense.category,
-        split_type: newExpense.split_type, splits
+        split_type: newExpense.split_type
       });
       setNewExpense({ group_id: '', description: '', amount: '', category: 'General', split_type: 'equal' });
       setShowAddExpense(false);
