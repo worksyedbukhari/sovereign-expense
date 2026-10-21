@@ -4,6 +4,26 @@ const authenticate = require('../middleware/auth');
 
 const router = express.Router();
 
+async function requireGroupAdmin(req, res, next) {
+  try {
+    const group = await get('SELECT creator_id FROM groups WHERE id = $1', [req.params.id]);
+    if (!group) return res.status(404).json({ error: 'Group not found' });
+    const membership = await get(
+      'SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2',
+      [req.params.id, req.user.id]
+    );
+    if (!membership || (membership.role !== 'admin' && group.creator_id !== req.user.id)) {
+      return res.status(403).json({ error: 'Only a group administrator can manage members' });
+    }
+    req.groupCreatorId = group.creator_id;
+    next();
+  } catch (error) {
+    console.error('Group authorization error:', error);
+    res.status(500).json({ error: 'Failed to authorize group access' });
+  }
+}
+
+
 router.get('/', authenticate, async (req, res) => {
   try {
     const groups = await all(`
@@ -100,9 +120,12 @@ router.delete('/:id', authenticate, async (req, res) => {
   }
 });
 
-router.post('/:id/members', authenticate, async (req, res) => {
+router.post('/:id/members', authenticate, requireGroupAdmin, async (req, res) => {
   try {
     const { userId } = req.body;
+    if (!Number.isSafeInteger(Number(userId)) || Number(userId) < 1) {
+      return res.status(400).json({ error: 'Valid user ID required' });
+    }
     const group = await get('SELECT * FROM groups WHERE id = $1', [req.params.id]);
     if (!group) return res.status(404).json({ error: 'Group not found' });
 
@@ -118,11 +141,14 @@ router.post('/:id/members', authenticate, async (req, res) => {
   }
 });
 
-router.delete('/:id/members/:userId', authenticate, async (req, res) => {
+router.delete('/:id/members/:userId', authenticate, requireGroupAdmin, async (req, res) => {
   try {
     const group = await get('SELECT * FROM groups WHERE id = $1', [req.params.id]);
     if (!group) return res.status(404).json({ error: 'Group not found' });
 
+    if (Number(req.params.userId) === req.groupCreatorId) {
+      return res.status(403).json({ error: 'Cannot remove the group creator' });
+    }
     await run('DELETE FROM group_members WHERE group_id = $1 AND user_id = $2', [req.params.id, req.params.userId]);
     res.json({ message: 'Member removed' });
   } catch (err) {
@@ -133,6 +159,8 @@ router.delete('/:id/members/:userId', authenticate, async (req, res) => {
 
 router.get('/:id/balances', authenticate, async (req, res) => {
   try {
+    const membership = await get('SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    if (!membership) return res.status(403).json({ error: 'Not a member of this group' });
     const expenses = await all('SELECT * FROM expenses WHERE group_id = $1', [req.params.id]);
     const balances = {};
 
