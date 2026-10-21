@@ -1,14 +1,23 @@
 # Contributing to Sovereign Expense
 
-Thanks for your interest in improving Sovereign Expense.
+Thank you for your interest in helping improve Sovereign Expense.
 
-- Search existing issues before starting. For significant architectural changes, open an issue to discuss the design first.
-- Create a focused branch, explain why the change is needed, and include regression tests where relevant.
-- Run `cd backend && npm ci && npm test`, and `cd frontend && npm ci && npm run build` before opening a pull request.
-- Never submit real financial data, user records, passwords, credentials, or private keys.
-- Use synthetic data for security tests and report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
-- Pull requests should explain the implementation, compatibility implications, and tests performed; include screenshots for visible interface changes.
+The project is in a **pre-release review stage**. The default branch contains the current prototype; [draft PR #1](https://github.com/worksyedbukhari/sovereign-expense/pull/1) proposes security, correctness, licensing, and testing improvements.
 
-Contributions are reviewed for security, correctness, accessibility, and compatibility. The maintainers may request changes before merging.
+## Start with an issue
 
-**License note:** The maintainer must confirm that they own or have permission to sublicense all included code and assets before final public release.
+Before a substantial code change, open a GitHub issue explaining the problem and the intended solution. Small, focused bug reports and design feedback are welcome. Use fictional financial records and never include personal information or secrets.
+
+## For code contributions
+
+1. Fork the repository and create a focused branch.
+2. Explain what your change does and why.
+3. Include regression tests where practical.
+4. Verify relevant code locally. On the default branch you can run `npm ci` and `npm run build` inside `frontend/`, and `node --check backend/server.js`. On the security branch you can also run `cd backend && npm ci && npm test`.
+5. Submit a pull request with reproduction steps and screenshots for visual changes.
+
+Security issues should be reported **privately**, as described in [SECURITY.md](SECURITY.md).
+
+## Licensing
+
+Repository licensing and all third-party code/asset rights are still being verified. The proposed MIT license in PR #1 is not yet merged. Please do not assume code can be redistributed under MIT until this is resolved. The maintainer may defer code contributions until the licensing review is complete.
