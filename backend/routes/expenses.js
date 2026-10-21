@@ -1,5 +1,6 @@
 const express = require('express');
-const { run, get, all } = require('../database');
+const { run, get, all, withTransaction } = require('../database');
+const { parseAmountToCents, centsToAmount, allocateEqual, validateCustomSplits } = require('../utils/money');
 const authenticate = require('../middleware/auth');
 
 const router = express.Router();
@@ -50,57 +51,59 @@ router.get('/', authenticate, async (req, res) => {
 router.post('/', authenticate, async (req, res) => {
   try {
     const { group_id, description, amount, category, split_type, splits, date } = req.body;
-
-    if (!group_id) return res.status(400).json({ error: 'Group is required. Please select or create a group first.' });
-    if (!description || !amount) return res.status(400).json({ error: 'Description and amount are required' });
-
-    const group = await get('SELECT id FROM groups WHERE id = $1', [group_id]);
-    if (!group) return res.status(404).json({ error: 'Group not found' });
-
-    const expenseId = await run(
-      'INSERT INTO expenses (group_id, paid_by, description, amount, category, split_type, date) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [group_id, req.user.id, description, amount, category || 'General', split_type || 'equal', date || new Date().toISOString()]
-    );
-
-    if (splits && splits.length > 0) {
-      for (const split of splits) {
-        await run('INSERT INTO expense_splits (expense_id, user_id, amount) VALUES ($1, $2, $3)', [expenseId, split.user_id, split.amount]);
-      }
-    } else {
-      const members = await all('SELECT user_id FROM group_members WHERE group_id = $1', [group_id]);
-      const perPerson = amount / members.length;
-      for (const member of members) {
-        await run('INSERT INTO expense_splits (expense_id, user_id, amount) VALUES ($1, $2, $3)', [expenseId, member.user_id, Math.round(perPerson * 100) / 100]);
-      }
+    const cents = parseAmountToCents(amount);
+    if (!Number.isSafeInteger(Number(group_id)) || Number(group_id) < 1) {
+      return res.status(400).json({ error: 'A valid group is required' });
     }
+    if (typeof description !== 'string' || !description.trim() || description.length > 500 || cents === null) {
+      return res.status(400).json({ error: 'A description and a positive amount with at most two decimals are required' });
+    }
+    if (date && Number.isNaN(Date.parse(date))) return res.status(400).json({ error: 'Invalid date' });
 
-    const members = await all('SELECT user_id FROM group_members WHERE group_id = $1 AND user_id != $2', [group_id, req.user.id]);
-    for (const member of members) {
-      await run(
-        'INSERT INTO notifications (user_id, type, title, message, related_id) VALUES ($1, $2, $3, $4, $5)',
-        [member.user_id, 'expense_added', 'New Expense', `${req.user.name} added "${description}" for $${amount}`, expenseId]
+    // Validate and write on a single connection so errors roll back all financial records.
+    const result = await withTransaction(async (tx) => {
+      const members = await tx.all('SELECT user_id FROM group_members WHERE group_id = $1 ORDER BY user_id', [group_id]);
+      const memberIds = members.map(member => member.user_id);
+      if (!memberIds.includes(req.user.id)) {
+        const error = new Error('Not a member of this group'); error.status = 403; throw error;
+      }
+      let splitRows;
+      try {
+        splitRows = Array.isArray(splits) && splits.length
+          ? validateCustomSplits(splits, memberIds, cents)
+          : allocateEqual(cents, memberIds);
+      } catch (error) {
+        error.status = 400; throw error;
+      }
+
+      const expenseId = await tx.run(
+        'INSERT INTO expenses (group_id, paid_by, description, amount, category, split_type, date) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [group_id, req.user.id, description.trim(), centsToAmount(cents), category || 'General', split_type || 'equal', date || new Date().toISOString()]
       );
-    }
-
-    const expense = await get(`
-      SELECT e.*, u.name as paid_by_name, g.name as group_name
-      FROM expenses e
-      JOIN users u ON e.paid_by = u.id
-      LEFT JOIN groups g ON e.group_id = g.id
-      WHERE e.id = $1
-    `, [expenseId]);
-
-    const expenseSplits = await all(`
-      SELECT es.*, u.name
-      FROM expense_splits es
-      JOIN users u ON es.user_id = u.id
-      WHERE es.expense_id = $1
-    `, [expenseId]);
-
-    res.status(201).json({ ...expense, splits: expenseSplits });
-  } catch (err) {
-    console.error('POST /expenses error:', err);
-    res.status(500).json({ error: 'Failed to create expense' });
+      for (const split of splitRows) {
+        await tx.run('INSERT INTO expense_splits (expense_id, user_id, amount) VALUES ($1, $2, $3)',
+          [expenseId, split.user_id, split.amount]);
+      }
+      for (const memberId of memberIds.filter(id => id !== req.user.id)) {
+        await tx.run(
+          'INSERT INTO notifications (user_id, type, title, message, related_id) VALUES ($1, $2, $3, $4, $5)',
+          [memberId, 'expense_added', 'New Expense', `${req.user.name} added "${description.trim()}" for ${centsToAmount(cents)}`, expenseId]
+        );
+      }
+      const expense = await tx.get(
+        'SELECT e.*, u.name as paid_by_name, g.name as group_name FROM expenses e JOIN users u ON e.paid_by = u.id JOIN groups g ON e.group_id = g.id WHERE e.id = $1',
+        [expenseId]
+      );
+      const expenseSplits = await tx.all(
+        'SELECT es.*, u.name FROM expense_splits es JOIN users u ON es.user_id = u.id WHERE es.expense_id = $1',
+        [expenseId]
+      );
+      return { ...expense, splits: expenseSplits };
+    });
+    res.status(201).json(result);
+  } catch (error) {
+    console.error('POST /expenses error:', error);
+    res.status(error.status || 500).json({ error: error.status ? error.message : 'Failed to create expense' });
   }
 });
 
@@ -142,6 +145,11 @@ router.get('/:id', authenticate, async (req, res) => {
     `, [req.params.id]);
 
     if (!expense) return res.status(404).json({ error: 'Expense not found' });
+    const membership = await get(
+      'SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2',
+      [expense.group_id, req.user.id]
+    );
+    if (!membership) return res.status(403).json({ error: 'Not a member of this group' });
 
     const splits = await all(`
       SELECT es.*, u.name
