@@ -1,5 +1,5 @@
 const express = require('express');
-const { run, get, all } = require('../database');
+const { run, get, all, withTransaction } = require('../database');
 const authenticate = require('../middleware/auth');
 
 const router = express.Router();
@@ -43,25 +43,38 @@ router.get('/', authenticate, async (req, res) => {
 
 router.post('/', authenticate, async (req, res) => {
   try {
-    const { name, description, memberIds } = req.body;
-    if (!name) return res.status(400).json({ error: 'Group name is required' });
-
-    const groupId = await run('INSERT INTO groups (name, description, creator_id) VALUES ($1, $2, $3)', [name, description || '', req.user.id]);
-    await run('INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, $3)', [groupId, req.user.id, 'admin']);
-
-    if (memberIds && memberIds.length > 0) {
-      for (const memberId of memberIds) {
-        try {
-          await run('INSERT INTO group_members (group_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [groupId, memberId]);
-        } catch (e) { /* ignore duplicates */ }
-      }
+    const { name, description, memberIds = [] } = req.body || {};
+    if (typeof name !== 'string' || !name.trim() || name.length > 120) {
+      return res.status(400).json({ error: 'A group name of up to 120 characters is required' });
     }
-
-    const group = await get('SELECT * FROM groups WHERE id = $1', [groupId]);
+    if (!Array.isArray(memberIds) || memberIds.length > 100 ||
+        memberIds.some(id => !Number.isSafeInteger(Number(id)) || Number(id) < 1)) {
+      return res.status(400).json({ error: 'Invalid group members' });
+    }
+    const uniqueMembers = [...new Set(memberIds.map(Number))].filter(id => id !== req.user.id);
+    const group = await withTransaction(async tx => {
+      const groupId = await tx.run(
+        'INSERT INTO groups (name, description, creator_id) VALUES ($1, $2, $3)',
+        [name.trim(), typeof description === 'string' ? description.slice(0, 2000) : '', req.user.id]
+      );
+      await tx.run(
+        'INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, $3)',
+        [groupId, req.user.id, 'admin']
+      );
+      for (const memberId of uniqueMembers) {
+        await tx.run(
+          'INSERT INTO group_members (group_id, user_id) VALUES ($1, $2)',
+          [groupId, memberId]
+        );
+      }
+      return tx.get('SELECT * FROM groups WHERE id = $1', [groupId]);
+    });
     res.status(201).json(group);
   } catch (err) {
     console.error('POST /groups error:', err);
-    res.status(500).json({ error: 'Failed to create group' });
+    res.status(err.code === '23503' ? 400 : 500).json({
+      error: err.code === '23503' ? 'One or more group members do not exist' : 'Failed to create group'
+    });
   }
 });
 
@@ -111,8 +124,11 @@ router.delete('/:id', authenticate, async (req, res) => {
     if (!group) return res.status(404).json({ error: 'Group not found' });
     if (group.creator_id !== req.user.id) return res.status(403).json({ error: 'Only the creator can delete the group' });
 
-    await run('DELETE FROM group_members WHERE group_id = $1', [req.params.id]);
+    // Group members, expenses and messages cascade from the group deletion.
+    // Deleting the group in one database statement avoids partially deleted groups.
     await run('DELETE FROM groups WHERE id = $1', [req.params.id]);
+    const io = req.app.get('io');
+    if (io) io.in(`group_${Number(req.params.id)}`).socketsLeave(`group_${Number(req.params.id)}`);
     res.json({ message: 'Group deleted' });
   } catch (err) {
     console.error('DELETE /groups/:id error:', err);
