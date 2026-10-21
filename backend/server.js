@@ -63,6 +63,7 @@ async function startServer() {
   });
 
   io.on('connection', (socket) => {
+    socket.join(`user_${socket.data.userId}`);
     const canAccessGroup = async (groupId) => {
       if (!Number.isSafeInteger(Number(groupId)) || Number(groupId) <= 0) return false;
       const member = await get(
