@@ -2,6 +2,7 @@ const express = require('express');
 const { run, get, all, withTransaction } = require('../database');
 const { parseAmountToCents, centsToAmount } = require('../utils/money');
 const authenticate = require('../middleware/auth');
+const { personalBalances } = require('../utils/balances');
 
 const router = express.Router();
 
@@ -83,34 +84,9 @@ router.get('/balances', authenticate, async (req, res) => {
       WHERE payer_id = $1 OR payee_id = $1
     `, [req.user.id]);
 
-    const balances = {};
-
-    for (const exp of userExpenses) {
-      const otherId = exp.paid_by_id === req.user.id ? exp.user_id : exp.paid_by_id;
-      if (!balances[otherId]) balances[otherId] = 0;
-      if (exp.paid_by_id === req.user.id) {
-        balances[otherId] -= exp.amount;
-      } else {
-        balances[otherId] += exp.amount;
-      }
-    }
-
-    for (const s of userSettlements) {
-      const otherId = s.payer_id === req.user.id ? s.payee_id : s.payer_id;
-      if (!balances[otherId]) balances[otherId] = 0;
-      if (s.payer_id === req.user.id) {
-        balances[otherId] += s.amount;
-      } else {
-        balances[otherId] -= s.amount;
-      }
-    }
-
-    const result = Object.entries(balances)
-      .map(([userId, balance]) => ({
-        userId: parseInt(userId),
-        balance: Math.round(balance * 100) / 100
-      }))
-      .filter(b => Math.abs(b.balance) > 0.01);
+    // Positive balance means the other person owes this user; negative means the user owes them.
+    // Compute in integer cents to avoid floating-point accumulation errors.
+    const result = personalBalances(userExpenses, userSettlements, req.user.id);
 
     const userIds = result.map(b => b.userId);
     if (userIds.length === 0) return res.json([]);
