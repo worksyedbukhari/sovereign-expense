@@ -85,7 +85,7 @@ export default function AuthPage() {
   const handleRegister = async (e) => {
     e.preventDefault(); setError('');
     if (!regName) { setError('Name is required'); return; }
-    if (!regPassword || regPassword.length < 6) { setError('Password must be at least 6 characters'); return; }
+    if (!regPassword || regPassword.length < 8) { setError('Password must be at least 8 characters'); return; }
     if (!regPurpose) { setError('Please select a purpose'); return; }
     setLoading(true);
     try {
@@ -117,7 +117,7 @@ export default function AuthPage() {
 
   const handleResetPassword = async (e) => {
     e.preventDefault(); setError('');
-    if (!fpNewPassword || fpNewPassword.length < 6) { setError('Password must be at least 6 characters'); return; }
+    if (!fpNewPassword || fpNewPassword.length < 8) { setError('Password must be at least 8 characters'); return; }
     setLoading(true);
     try {
       await api.post('/auth/reset-password', { identifier: fpEmail, code: fpOTP, newPassword: fpNewPassword });
