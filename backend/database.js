@@ -174,7 +174,7 @@ async function withTransaction(work) {
   const tx = {
     async run(sql, params = []) {
       const converted = convertQuery(sql);
-      const insert = /^\\s*INSERT/i.test(sql);
+      const insert = /^\s*INSERT/i.test(sql);
       const result = await client.query(
         insert ? converted + ' RETURNING id' : converted,
         params
