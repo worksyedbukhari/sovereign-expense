@@ -41,4 +41,26 @@ function personalBalances(expenses, settlements, currentUserId) {
   return [...net.entries()].filter(([,cents]) => cents !== 0)
     .map(([userId,cents]) => ({ userId, balance: cents / 100 }));
 }
-module.exports = { amountToCents, personalBalances };
+function groupBalances(splitRows) {
+  if (!Array.isArray(splitRows)) throw new TypeError('Expected group split rows');
+  const net = new Map();
+  function add(userId, delta) {
+    if (!Number.isSafeInteger(userId) || userId < 1) throw new Error('Invalid user ID');
+    const cents = (net.get(userId) || 0) + delta;
+    if (!Number.isSafeInteger(cents)) throw new RangeError('Balance is too large');
+    net.set(userId, cents);
+  }
+  for (const split of splitRows) {
+    if (Number(split.is_settled) === 1 || split.is_settled === true) continue;
+    const payerId = Number(split.paid_by);
+    const borrowerId = Number(split.user_id);
+    if (payerId === borrowerId) continue;
+    const cents = amountToCents(split.amount);
+    add(payerId, cents);
+    add(borrowerId, -cents);
+  }
+  return [...net.entries()].filter(([,cents]) => cents !== 0)
+    .map(([userId, cents]) => ({ userId, balance: cents / 100 }));
+}
+
+module.exports = { amountToCents, personalBalances, groupBalances };
