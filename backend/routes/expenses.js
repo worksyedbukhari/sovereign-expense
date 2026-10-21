@@ -167,27 +167,39 @@ router.get('/:id', authenticate, async (req, res) => {
 
 router.put('/:id', authenticate, async (req, res) => {
   try {
-    const expense = await get('SELECT * FROM expenses WHERE id = $1', [req.params.id]);
-    if (!expense) return res.status(404).json({ error: 'Expense not found' });
-    if (expense.paid_by !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
-
-    const { description, amount, category, date } = req.body;
-    await run('UPDATE expenses SET description = COALESCE($1, description), amount = COALESCE($2, amount), category = COALESCE($3, category), date = COALESCE($4, date) WHERE id = $5',
-      [description, amount, category, date, req.params.id]);
-
-    if (amount) {
-      const splits = await all('SELECT * FROM expense_splits WHERE expense_id = $1', [req.params.id]);
-      const perPerson = amount / splits.length;
-      for (const split of splits) {
-        await run('UPDATE expense_splits SET amount = $1 WHERE id = $2', [Math.round(perPerson * 100) / 100, split.id]);
-      }
+    const { description, amount, category, date } = req.body || {};
+    if (description !== undefined && (typeof description !== 'string' || !description.trim() || description.length > 500)) {
+      return res.status(400).json({ error: 'Invalid description' });
     }
-
-    const updated = await get('SELECT * FROM expenses WHERE id = $1', [req.params.id]);
+    const cents = amount === undefined ? null : parseAmountToCents(amount);
+    if (amount !== undefined && cents === null) {
+      return res.status(400).json({ error: 'Invalid amount' });
+    }
+    if (date !== undefined && Number.isNaN(Date.parse(date))) return res.status(400).json({ error: 'Invalid date' });
+    const updated = await withTransaction(async tx => {
+      const expense = await tx.get('SELECT * FROM expenses WHERE id = $1 FOR UPDATE', [req.params.id]);
+      if (!expense) { const err = new Error('Expense not found'); err.status = 404; throw err; }
+      if (expense.paid_by !== req.user.id) { const err = new Error('Not authorized'); err.status = 403; throw err; }
+      if (cents !== null && expense.split_type !== 'equal') {
+        const err = new Error('Editing custom-split amounts is not yet supported'); err.status = 400; throw err;
+      }
+      await tx.run('UPDATE expenses SET description = COALESCE($1, description), amount = COALESCE($2, amount), category = COALESCE($3, category), date = COALESCE($4, date) WHERE id = $5',
+        [description?.trim() ?? null, cents === null ? null : centsToAmount(cents), category ?? null, date ?? null, req.params.id]);
+      if (cents !== null) {
+        const original = await tx.all('SELECT id, user_id FROM expense_splits WHERE expense_id = $1 ORDER BY user_id', [req.params.id]);
+        if (!original.length) { const err = new Error('No expense splits found'); err.status = 400; throw err; }
+        const allocation = allocateEqual(cents, original.map(row => row.user_id));
+        for (const split of allocation) {
+          await tx.run('UPDATE expense_splits SET amount = $1 WHERE expense_id = $2 AND user_id = $3',
+            [split.amount, req.params.id, split.user_id]);
+        }
+      }
+      return tx.get('SELECT * FROM expenses WHERE id = $1', [req.params.id]);
+    });
     res.json(updated);
-  } catch (err) {
-    console.error('PUT /expenses/:id error:', err);
-    res.status(500).json({ error: 'Failed to update expense' });
+  } catch (error) {
+    console.error('PUT /expenses/:id error:', error);
+    res.status(error.status || 500).json({ error: error.status ? error.message : 'Failed to update expense' });
   }
 });
 
