@@ -150,6 +150,11 @@ router.delete('/:id/members/:userId', authenticate, requireGroupAdmin, async (re
       return res.status(403).json({ error: 'Cannot remove the group creator' });
     }
     await run('DELETE FROM group_members WHERE group_id = $1 AND user_id = $2', [req.params.id, req.params.userId]);
+    const io = req.app.get('io');
+    if (io) {
+      // Revoke already-connected sockets immediately, not only on their next event.
+      io.in(`user_${Number(req.params.userId)}`).socketsLeave(`group_${Number(req.params.id)}`);
+    }
     res.json({ message: 'Member removed' });
   } catch (err) {
     console.error('DELETE /groups/:id/members/:userId error:', err);
