@@ -1,52 +1,63 @@
 # Sovereign Expense
 
-Sovereign Expense is a self-hostable expense-sharing application for tracking group spending, managing balances and settlements, and exploring spending reports. The repository includes a React frontend, an Express / Socket.IO backend, and PostgreSQL.
+**Shared expenses, group balances, and settlement tracking — an early-stage, self-hostable web application.**
 
-> **Security status:** This is an actively maintained project, not a certified banking or accounting product. Review [SECURITY.md](SECURITY.md) before exposing it to real users or uploading sensitive financial information.
+Sovereign Expense is a public project exploring a straightforward way for households, roommates, and teams to record expenses and understand who owes whom. It includes a React browser frontend, an Express/Socket.IO backend, and PostgreSQL storage.
 
-## Features
-- Account registration and sign-in, with email verification
-- Shared groups and expense tracking
-- Equal or explicitly supplied custom splits
-- Group chat, settlement records, balances, and spending analytics
-- Responsive browser interface and Docker/deployment configuration
+> **Project status: development / pre-release.** This repository is publicly viewable, but it is **not** an independently audited financial product. There is currently no verified public demo or production-ready release. Use **fictional data only** when evaluating it. Security hardening, testing, documentation, and licensing are being reviewed in [draft pull request #1](https://github.com/worksyedbukhari/sovereign-expense/pull/1).
 
-## Requirements
-- Node.js 22 or later (recommended for local development)
-- PostgreSQL 14 or later
-- SMTP credentials for registration and password-recovery emails
+## What is in the repository?
 
-## Local development
+- Account registration, authentication, and profile interfaces
+- Group expense entry and participant splits
+- Settlement and balance tracking
+- Group chat and spending analytics
+- Responsive React frontend in [`frontend/`](frontend/)
+- Node.js / Express API and Socket.IO backend in [`backend/`](backend/)
 
-1. Clone the repo:
-   ```sh
-   git clone https://github.com/worksyedbukhari/sovereign-expense.git
-   cd sovereign-expense
-   ```
+These are implemented project areas, **not a claim that every feature has passed end-to-end or security testing**.
+
+## Architecture
+
+| Component | Technology |
+| --- | --- |
+| Frontend | React, React Router, Recharts |
+| Backend | Node.js, Express, Socket.IO |
+| Database | PostgreSQL |
+| Development | npm, Docker/deployment configuration |
+
+## Try it locally (development only)
+
+You will need Node.js (see [`.nvmrc`](.nvmrc)), npm, a local PostgreSQL database, and appropriate environment configuration.
+
+1. Clone the repository: `git clone https://github.com/worksyedbukhari/sovereign-expense.git`
 2. Create a PostgreSQL database named `sovereign_expense`.
-3. Copy `backend/.env.example` to `backend/.env`, then set `DATABASE_URL`, a strong random `JWT_SECRET`, and SMTP credentials. Do not commit `.env` or any real credentials.
-4. In one terminal run `cd backend && npm ci && npm run dev`; in another run `cd frontend && npm ci && npm start`.
-5. Open http://localhost:3000. The API listens on http://localhost:5000 by default.
+3. Create `backend/.env` locally. Set `DATABASE_URL` to your local PostgreSQL connection string and `JWT_SECRET` to a long, randomly generated secret. Configure SMTP credentials if email functions are needed. **Never commit secrets or real credentials.**
+4. In one terminal: `cd backend && npm ci && npm run dev`.
+5. In another terminal, from the repository root: `cd frontend && npm ci && npm start`.
+6. Open `http://localhost:3000`. The API normally listens on port `5000`.
 
-The database tables are initialized on backend startup. Existing installations created before monetary type changes should review `migrations/001_amounts_to_numeric.sql` and back up all data before applying that migration.
+The above instructions are for a **local evaluation**, not a verified production deployment. Email verification and third-party functions may need additional credentials. Running the browser frontend alone does not provide working accounts or group expense data.
 
-## Quality checks
-- Backend: `cd backend && npm test`
-- Backend syntax: `node --check backend/server.js`
-- Frontend production build: `cd frontend && npm ci && npm run build`
-- CI configuration: `.github/workflows/ci.yml`
+## Security and financial-data limitations
 
-## Operational notes
-- New email/password accounts require an SMTP-delivered one-time code. Verification codes are never returned by the API. Without SMTP, registration and password recovery are unavailable.
-- The former `/api/auth/social-login` shortcut is deliberately disabled because it did not validate identity-provider tokens. Do not re-enable it without server-side provider verification.
-- Authenticated Socket.IO connections use `auth: { token }`; sending chat messages goes through the REST API, which persists messages and emits the saved record.
-- Currency storage uses two decimal places. **Currencies with other minor-unit conventions are not yet fully supported.** Do not use this application for mixed-currency accounting without appropriate conversions and tests.
-- Configure HTTPS, appropriately restricted CORS, secret rotation, backups, email rate limits, and monitoring before internet deployment.
+This software is undergoing security and financial-correctness work. Do **not** deploy it publicly with real credentials or sensitive personal/financial information until a full review has been completed. Planned verification includes database integration, authorization checks, dependency and authentication review, financial edge cases, and backup/restore testing.
 
-## Community
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for contribution instructions and [SECURITY.md](SECURITY.md) for private security reporting. Issues and pull requests are welcome. The project is released under the [MIT License](LICENSE).
+You can inspect the [security and open-source readiness work in PR #1](https://github.com/worksyedbukhari/sovereign-expense/pull/1). Its CI checks do **not** replace end-to-end tests or an independent security audit.
 
-## Maintainer
-[worksyedbukhari](https://github.com/worksyedbukhari)
+## Roadmap
 
-Maintainers should only claim verified community usage or contribution statistics when applying to outside programs; making a repository public alone does not establish open-source ecosystem impact.
+- [x] Publish an inspectable repository and document the existing project
+- [ ] Review and merge security fixes after testing
+- [ ] Verify financial calculations and database migrations in staging
+- [ ] Add repeatable end-to-end tests and release instructions
+- [ ] Publish a verified demo and initial tagged release
+- [ ] Invite genuine beta feedback and review contributions
+
+## Contributing and license
+
+Feedback and carefully scoped bug reports are welcome via [GitHub Issues](https://github.com/worksyedbukhari/sovereign-expense/issues). Please use synthetic data in examples. Report security vulnerabilities privately, rather than posting working exploits or secrets in public issues.
+
+**License review pending:** A proposed MIT license is included in PR #1, but the maintainer must verify the redistribution rights for all code and assets before licensing the complete repository. Until that review is finished, do not assume this repository is licensed for unrestricted reuse.
+
+Maintainer: [@worksyedbukhari](https://github.com/worksyedbukhari)
