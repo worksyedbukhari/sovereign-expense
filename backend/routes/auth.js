@@ -263,10 +263,17 @@ router.get('/me', authenticate, async (req, res) => {
 });
 
 router.put('/me', authenticate, async (req, res) => {
-  const { name, email, phone, currency, country_code, country } = req.body;
+  const { name, email, phone, currency, country_code, country } = req.body || {};
   try {
+    // Account email is the recovery identity. Never allow a direct unverified change.
+    if (email !== undefined) {
+      const existing = await get('SELECT email FROM users WHERE id = $1', [req.user.id]);
+      if (!existing) return res.status(404).json({ error: 'User not found' });
+      if (!validEmail(email) || email.trim().toLowerCase() !== existing.email.trim().toLowerCase()) {
+        return res.status(403).json({ error: 'Changing your email requires a verified email-change flow' });
+      }
+    }
     if (name) await run('UPDATE users SET name = ? WHERE id = ?', [name, req.user.id]);
-    if (email) await run('UPDATE users SET email = ? WHERE id = ?', [email, req.user.id]);
     if (phone) await run('UPDATE users SET phone = ? WHERE id = ?', [phone, req.user.id]);
     if (currency) await run('UPDATE users SET currency = ? WHERE id = ?', [currency, req.user.id]);
     if (country_code) await run('UPDATE users SET country_code = ? WHERE id = ?', [country_code, req.user.id]);
