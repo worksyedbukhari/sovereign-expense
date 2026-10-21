@@ -22,7 +22,7 @@ function getEmailTransporter() {
     });
     console.log('[SMTP] Gmail transporter ready');
   } else {
-    console.log('[SMTP] No credentials — OTP will show on screen only');
+    console.log('[SMTP] No credentials — email verification unavailable');
   }
   return emailTransporter;
 }
@@ -61,7 +61,7 @@ function otpMatches(record, target, purpose, code) {
 }
 
 function validEmail(value) {
-  return typeof value === 'string' && value.length <= 254 && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value);
+  return typeof value === 'string' && value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 async function issueOTP(target, purpose) {
@@ -103,7 +103,7 @@ router.post('/send-otp', async (req, res) => {
 router.post('/verify-otp', async (req, res) => {
   try {
     const { target, code, purpose } = req.body || {};
-    if (!validEmail(target) || !/^\\d{6}$/.test(String(code)) || !['register', 'reset_password'].includes(purpose)) {
+    if (!validEmail(target) || !/^\d{6}$/.test(String(code)) || !['register', 'reset_password'].includes(purpose)) {
       return res.status(400).json({ error: 'Invalid verification request' });
     }
     const recipient = target.trim().toLowerCase();
@@ -232,7 +232,7 @@ router.post('/forgot-password', async (req, res) => {
 router.post('/reset-password', async (req, res) => {
   try {
     const { identifier, code, newPassword } = req.body || {};
-    if (!validEmail(identifier) || !/^\\d{6}$/.test(String(code)) || typeof newPassword !== 'string' || newPassword.length < 8) {
+    if (!validEmail(identifier) || !/^\d{6}$/.test(String(code)) || typeof newPassword !== 'string' || newPassword.length < 8) {
       return res.status(400).json({ error: 'Valid email, code and password of at least 8 characters are required' });
     }
     const recipient = identifier.trim().toLowerCase();
