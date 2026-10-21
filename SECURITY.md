@@ -1,21 +1,27 @@
 # Security Policy
 
-Sovereign Expense manages user accounts and financial information. Do not disclose real personal or financial data in bug reports.
+## Project status
 
-## Reporting vulnerabilities
+Sovereign Expense is currently **pre-release**. No version is independently security-audited or approved for handling sensitive or regulated financial data. **Do not use real banking data, passwords, personal information, or financial records to test the app.**
 
-Use GitHub's private vulnerability-reporting feature if the repository has it enabled. Otherwise contact the repository maintainer privately through an established channel. Do not post detailed exploits, account tokens, or secrets to public issues.
+The public default branch has legacy behavior that is under review. Proposed fixes can be inspected in [draft security PR #1](https://github.com/worksyedbukhari/sovereign-expense/pull/1); changes in a pull request should **not** be assumed to be released.
 
-Please include the affected feature, impact, steps to reproduce with synthetic data, and a suggested fix if available. This project does not guarantee a response SLA.
+## Reporting security issues
 
-## Important deployment limitations
+Do not open public issues containing passwords, access tokens, exploits, sensitive financial records, or private vulnerabilities. If GitHub private vulnerability reporting is enabled, use that feature. Otherwise, contact the repository owner privately through a trusted channel.
 
-This project has **not** undergone an independent security assessment, and should not be described as enterprise-certified or suitable for regulated financial use.
+Please describe the affected feature, potential impact, reproduction steps using synthetic data, and relevant environment details without attaching secrets.
 
-- Require HTTPS and securely managed secrets.
-- Configure backups, tested restore procedures, secure database TLS and restricted CORS.
-- Deploy email-based OTP only with reliable SMTP and rate limits at the edge.
-- The legacy social-login shortcut has been disabled until server-side identity-provider verification is implemented.
-- Run database migrations against a backed-up staging copy before production.
-- Audit permission checks on **every** API endpoint and verify Socket.IO room isolation.
-- Add threat-model, dependency scanning, end-to-end, load, and recovery tests before production deployment.
+There is not yet a published security response-time guarantee.
+
+## Production release blockers
+
+- Verify authentication, authorization, password recovery, and session revocation against a staging PostgreSQL database.
+- Review **every** HTTP endpoint and Socket.IO event for data isolation and least privilege.
+- Enable rate limits, secure headers, trusted origins, proper HTTPS, and verified database TLS.
+- Audit third-party dependencies and scan for exposed secrets.
+- Confirm financial computations, database migrations, and rollback/restore procedures.
+- Add end-to-end, concurrency, negative-permission, and recovery tests.
+- Review software and asset licensing rights before public release.
+
+Passing syntax checks, unit tests, or a React build is not equivalent to a penetration test, production certification, or proof of secure deployment.
