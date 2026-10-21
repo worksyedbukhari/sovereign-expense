@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { amountToCents, personalBalances } = require('../utils/balances');
+const { amountToCents, personalBalances, groupBalances } = require('../utils/balances');
 
 test('stored two-decimal amounts convert to exact integer cents', () => {
   assert.equal(amountToCents('0.01'), 1);
@@ -31,4 +31,25 @@ test('tiny shares accumulate without drift and zero balances disappear', () => {
     { paid_by_id: 1, user_id: 2, amount: '0.03', is_settled: 1 }
   ];
   assert.deepEqual(personalBalances(expenses, [{payer_id:2,payee_id:1,amount:'0.03'}], 1), []);
+});
+
+test('group balances use exact cents and ignore settled shares', () => {
+  const splits = [
+    {paid_by:1, user_id:2, amount:'0.01', is_settled:0},
+    {paid_by:1, user_id:2, amount:'0.02', is_settled:0},
+    {paid_by:1, user_id:3, amount:'50.50', is_settled:1}
+  ];
+  assert.deepEqual(groupBalances(splits), [{userId:1,balance:0.03},{userId:2,balance:-0.03}]);
+});
+
+test('group balances net opposite-direction expenses correctly', () => {
+  assert.deepEqual(groupBalances([
+    {paid_by:1,user_id:2,amount:'75.00',is_settled:0},
+    {paid_by:2,user_id:1,amount:'25.00',is_settled:0}
+  ]), [{userId:1,balance:50},{userId:2,balance:-50}]);
+});
+
+test('group balances reject impossible financial inputs', () => {
+  assert.throws(()=>groupBalances([{paid_by:1,user_id:2,amount:'1.234',is_settled:0}]));
+  assert.throws(()=>groupBalances([{paid_by:'garbage',user_id:2,amount:'1.00',is_settled:0}]));
 });
