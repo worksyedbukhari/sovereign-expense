@@ -121,6 +121,13 @@ test('staging PostgreSQL: account, group, expense and settlement permissions', {
     assert.ok(afterPayment.json.some(x => x.userId === bob && x.they_owe && x.amount === 1.5),
       'Repayment reduces the outstanding balance');
 
+    const groupBalances = await request('GET', `/api/groups/${groupId}/balances`, aliceToken);
+    assert.equal(groupBalances.status, 200, JSON.stringify(groupBalances));
+    assert.ok(groupBalances.json.some(x => x.userId === alice && x.balance === 1.5),
+      'Group creditor balance reflects the attributed repayment');
+    assert.ok(groupBalances.json.some(x => x.userId === bob && x.balance === -1.5),
+      'Group debtor balance reflects the attributed repayment');
+
     const deleted = await request('DELETE', `/api/groups/${groupId}`, aliceToken);
     assert.equal(deleted.status, 200, JSON.stringify(deleted));
     const remaining = await db.get('SELECT COUNT(*)::int AS total FROM expenses WHERE group_id = $1', [groupId]);
