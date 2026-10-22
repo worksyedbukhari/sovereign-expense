@@ -53,3 +53,12 @@ test('group balances reject impossible financial inputs', () => {
   assert.throws(()=>groupBalances([{paid_by:1,user_id:2,amount:'1.234',is_settled:0}]));
   assert.throws(()=>groupBalances([{paid_by:'garbage',user_id:2,amount:'1.00',is_settled:0}]));
 });
+
+test('group-attributed repayments reduce balances without affecting other groups', () => {
+  const splits = [{paid_by: 1,user_id: 2,amount:'10.01',is_settled:0}];
+  const repayments = [{payer_id: 2,payee_id: 1,amount:'3.50'}];
+  assert.deepEqual(groupBalances(splits, repayments), [
+    {userId:1,balance:6.51},{userId:2,balance:-6.51}
+  ]);
+  assert.deepEqual(groupBalances(splits, [{payer_id:2,payee_id:1,amount:'10.01'}]), []);
+});
