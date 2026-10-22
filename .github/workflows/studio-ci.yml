@@ -6,6 +6,7 @@ on:
       - '.github/workflows/studio-ci.yml'
   push:
     branches:
+      - master
       - 'feature/sovereign-studio'
     paths:
       - 'projects/sovereign-studio/**'
