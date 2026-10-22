@@ -193,7 +193,11 @@ router.get('/:id/balances', authenticate, async (req, res) => {
       JOIN expense_splits es ON es.expense_id = e.id
       WHERE e.group_id = $1 AND es.user_id != e.paid_by
     `, [req.params.id]);
-    const balances = groupBalances(rows);
+    const repayments = await all(
+      'SELECT payer_id, payee_id, amount FROM settlements WHERE group_id = $1',
+      [req.params.id]
+    );
+    const balances = groupBalances(rows, repayments);
     if (!balances.length) return res.json([]);
 
     const users = await all(
