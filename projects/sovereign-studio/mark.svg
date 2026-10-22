@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Sovereign Studio">
+ <rect width="64" height="64" rx="17" fill="#0b1018"/>
+ <rect x="10" y="10" width="44" height="44" rx="12" fill="none" stroke="#b6e4bc" stroke-opacity=".45" stroke-width="1.8"/>
+ <g transform="rotate(-27 32 32)" fill="#b6e4bc"><rect x="20" y="31" width="7" height="12" rx="3.5"/><rect x="29" y="19" width="7" height="24" rx="3.5"/><rect x="38" y="27" width="7" height="16" rx="3.5"/></g>
+</svg>

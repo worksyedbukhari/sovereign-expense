@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#080b11" />
+  <meta name="description" content="Sovereign Studio is a privacy-first shared-expense scenario planner. Explore precise splits and transparent settlement paths, directly in your browser." />
+  <title>Sovereign Studio — Shared finance, made clear</title>
+  <link rel="icon" type="image/svg+xml" href="./mark.svg" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script type="module" src="./src/app.mjs"></script>
+</head>
+<body>
+  <a class="skip-link" href="#workspace">Skip to planner</a>
+  <div class="ambient ambient-one" aria-hidden="true"></div>
+  <div class="ambient ambient-two" aria-hidden="true"></div>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Sovereign Studio home">
+        <span class="brand-symbol" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span>sovereign<span class="brand-dot">.</span><small>STUDIO</small></span>
+      </a>
+      <nav class="topnav" aria-label="Primary">
+        <a href="#workspace">Workspace</a><a href="#how-it-works">Method</a>
+      </nav>
+      <span class="privacy-chip"><span class="status-dot"></span> LOCAL-FIRST EXPERIENCE</span>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="eyebrow"><span class="eyebrow-line"></span> FINANCIAL CLARITY, REIMAGINED <span class="hero-index">01 / 03</span></div>
+        <h1 id="hero-title">Clarity for every<br /><em>shared expense.</em></h1>
+        <p class="hero-copy">An elegant space to plan contributions, find the fairest split, and see exactly how everyone settles up. No account. No spreadsheets. No guesswork.</p>
+        <div class="hero-actions">
+          <a class="primary-link" href="#workspace">Open scenario studio <span aria-hidden="true">↗</span></a>
+          <span class="hero-note">Made for real conversations about money.</span>
+        </div>
+        <div class="hero-rule"></div>
+      </section>
+
+      <section id="workspace" class="workspace" aria-labelledby="workspace-title">
+        <div class="section-intro">
+          <div><p class="overline">YOUR WORKSPACE / 001</p><h2 id="workspace-title">Scenario studio</h2><p class="section-copy">Model a group payment. Reconcile in a moment.</p></div>
+          <span class="workspace-pill">LIVE CALCULATION <span aria-hidden="true">●</span></span>
+        </div>
+
+        <div class="workspace-grid">
+          <section class="panel editor" aria-labelledby="editor-heading">
+            <div class="panel-top"><div><p class="overline">01 · INPUTS</p><h3 id="editor-heading">The people &amp; the plan</h3></div><span class="panel-glyph" aria-hidden="true">↗</span></div>
+
+            <fieldset class="preset-field">
+              <legend>Start with a scenario</legend>
+              <div class="presets" id="presets">
+                <button type="button" class="preset active" aria-pressed="true" data-preset="weekend">Weekend escape</button>
+                <button type="button" class="preset" aria-pressed="false" data-preset="apartment">Shared apartment</button>
+                <button type="button" class="preset" aria-pressed="false" data-preset="team">Team offsite</button>
+              </div>
+            </fieldset>
+
+            <div class="editor-options">
+              <div class="field-block"><label for="scenario-title">Scenario title</label><input id="scenario-title" maxlength="80" autocomplete="off" spellcheck="false" /></div>
+              <div class="field-block currency-field"><label for="currency">Display currency</label><select id="currency"><option value="USD">USD · $</option><option value="SAR">SAR · ﷼</option><option value="EUR">EUR · €</option><option value="PKR">PKR · ₨</option></select></div>
+            </div>
+
+            <div class="participants-header"><div><h4>Contributions</h4><p>Enter how much each person has paid.</p></div><span class="people-count" id="people-count">3 PEOPLE</span></div>
+            <div class="participant-labels" aria-hidden="true"><span>PARTICIPANT</span><span>AMOUNT PAID</span><span></span></div>
+            <div id="participants" class="participant-list"></div>
+            <div class="editor-bottom"><button type="button" id="add-person" class="secondary-button"><span aria-hidden="true">＋</span> Add a person</button><span>Up to 12 participants</span></div>
+            <div class="field-error" id="form-error" aria-live="polite" role="status"></div>
+          </section>
+
+          <section class="panel insights" aria-labelledby="insights-heading">
+            <div class="panel-top"><div><p class="overline">02 · INSIGHTS</p><h3 id="insights-heading">The full picture</h3></div><span class="panel-glyph" aria-hidden="true">◎</span></div>
+            <div class="total-block"><span>TOTAL CONTRIBUTED</span><strong id="total-display">$0.00</strong><p>Across <b id="total-people">0</b> participants</p></div>
+            <div class="metrics"><div><span>Fair share / person</span><strong id="share-display">$0.00</strong></div><div><span>To be reconciled</span><strong id="outstanding-display">$0.00</strong></div></div>
+            <div class="ledger-area"><div class="mini-header"><h4>Contribution breakdown</h4><span>PAID VS. FAIR SHARE</span></div><div id="ledger-bars" class="bars" aria-live="polite"></div></div>
+            <div class="result-foot">A transparent calculation, down to the last cent.</div>
+          </section>
+        </div>
+
+        <section class="panel settlement-panel" aria-labelledby="settlement-heading">
+          <div class="settlement-title"><div><p class="overline">03 · OUTCOME</p><h3 id="settlement-heading">The simplest path forward.</h3><p>Suggested transfers to balance your scenario.</p></div><span id="transfer-count" class="count-tag">0 TRANSFERS</span></div>
+          <div id="transfer-list" class="transfer-list" aria-live="polite"></div>
+          <div class="settlement-bottom"><p><span class="tiny-glow"></span> Calculated on your device. Your scenario is never sent to a server.</p><button type="button" id="export-csv" class="export-button">Export CSV <span aria-hidden="true">↗</span></button></div>
+        </section>
+      </section>
+
+      <section class="principles" id="how-it-works" aria-labelledby="method-heading">
+        <div class="method-heading"><p class="overline">THE METHOD / 002</p><h2 id="method-heading">Nothing hidden.<br /><em>Nothing approximate.</em></h2></div>
+        <div class="principle-grid">
+          <article><span class="principle-number">01</span><h3>Enter contributions.</h3><p>Record what each participant paid. Edit any amount and see the plan update instantly.</p></article>
+          <article><span class="principle-number">02</span><h3>Allocate precisely.</h3><p>We distribute the total evenly, assigning any remaining cents deterministically so totals always match.</p></article>
+          <article><span class="principle-number">03</span><h3>Settle thoughtfully.</h3><p>A transparent creditor/debtor matching algorithm suggests efficient repayments, with an exportable record.</p></article>
+        </div>
+      </section>
+    </main>
+    <footer><span>sovereign<span class="brand-dot">.</span> STUDIO</span><span>DESIGNED FOR CLARITY · BUILT FOR TRUST</span><a href="https://github.com/worksyedbukhari/sovereign-expense">VIEW SOURCE ↗</a></footer>
+  </div>
+</body>
+</html>

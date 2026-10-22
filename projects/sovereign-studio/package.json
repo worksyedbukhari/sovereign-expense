@@ -1,0 +1,14 @@
+{
+  "name": "@sovereign/studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Privacy-first shared-expense scenario planning and settlement visualization",
+  "type": "module",
+  "engines": {"node": ">=20"},
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "check": "node --check src/engine.mjs && node --check src/app.mjs && npm test"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

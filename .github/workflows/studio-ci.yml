@@ -1,0 +1,59 @@
+name: Sovereign Studio CI
+on:
+  pull_request:
+    paths:
+      - 'projects/sovereign-studio/**'
+      - '.github/workflows/studio-ci.yml'
+  push:
+    branches:
+      - master
+      - 'feature/sovereign-studio'
+    paths:
+      - 'projects/sovereign-studio/**'
+      - '.github/workflows/studio-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  studio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and unit tests
+        run: npm run check --prefix projects/sovereign-studio
+
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated browser test runner
+        run: npm install --no-save playwright@1.56.1
+        working-directory: projects/sovereign-studio
+      - name: Install Chromium
+        run: npx playwright install chromium --with-deps
+        working-directory: projects/sovereign-studio
+      - name: Test desktop and mobile experience
+        run: node test/browser.smoke.mjs
+        working-directory: projects/sovereign-studio
+      - name: Upload preview screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-preview-screenshots
+          path: |
+            projects/sovereign-studio/preview-desktop.png
+            projects/sovereign-studio/preview-mobile.png
+          if-no-files-found: ignore
