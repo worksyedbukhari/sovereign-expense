@@ -86,12 +86,16 @@ export function analyzeScenario(input) {
 function safeCsvCell(value) {
   let text = String(value);
   // Prevent spreadsheet formula injection from untrusted names and notes.
-  if (/^[\s]*[=+\-@]/.test(text) || /^[\t\r\n]/.test(text)) text = "'" + text;
+  const decimalValue = /^-?(?:0|[1-9][0-9]*)\.[0-9]{2}$/.test(text);
+  if (!decimalValue && (/^[\s]*[=+\-@]/.test(text) || /^[\t\r\n]/.test(text))) text = "'" + text;
   return '"' + text.replace(/"/g, '""') + '"';
 }
 
 export function exportScenarioCsv(report) {
   const lines = [
+    ['Scenario', String(report.title || 'Untitled scenario')],
+    ['Currency', String(report.currency || 'USD')],
+    [],
     ['Participant', 'Paid', 'Fair share', 'Net balance'],
     ...report.ledger.map(p => [p.name, (p.paidCents / 100).toFixed(2),
       (p.shareCents / 100).toFixed(2), (p.netCents / 100).toFixed(2)]),
