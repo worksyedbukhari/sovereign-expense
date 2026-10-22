@@ -1,6 +1,8 @@
 const express = require('express');
-const { run, get, all } = require('../database');
+const { run, get, all, withTransaction } = require('../database');
+const { parseAmountToCents, centsToAmount } = require('../utils/money');
 const authenticate = require('../middleware/auth');
+const { personalBalances } = require('../utils/balances');
 
 const router = express.Router();
 
@@ -27,30 +29,41 @@ router.get('/', authenticate, async (req, res) => {
 
 router.post('/', authenticate, async (req, res) => {
   try {
-    const { payee_id, amount, group_id, note } = req.body;
-    if (!payee_id || !amount) return res.status(400).json({ error: 'Payee and amount are required' });
-
-    const settlementId = await run(
-      'INSERT INTO settlements (payer_id, payee_id, amount, group_id, note) VALUES ($1, $2, $3, $4, $5)',
-      [req.user.id, payee_id, amount, group_id || null, note || '']
+    const { payee_id, amount, group_id, note } = req.body || {};
+    const payeeId = Number(payee_id);
+    const cents = parseAmountToCents(amount);
+    if (!Number.isSafeInteger(payeeId) || payeeId < 1 || payeeId === req.user.id || cents === null) {
+      return res.status(400).json({ error: 'A different payee and a valid positive amount are required' });
+    }
+    if (group_id != null && (!Number.isSafeInteger(Number(group_id)) || Number(group_id) < 1)) {
+      return res.status(400).json({ error: 'Invalid group' });
+    }
+    const mutual = await get(
+      `SELECT gm1.group_id FROM group_members gm1
+       JOIN group_members gm2 ON gm1.group_id = gm2.group_id
+       WHERE gm1.user_id = $1 AND gm2.user_id = $2
+       AND ($3::integer IS NULL OR gm1.group_id = $3) LIMIT 1`,
+      [req.user.id, payeeId, group_id || null]
     );
-
-    const settlement = await get(`
-      SELECT s.*, payer.name as payer_name, payee.name as payee_name
-      FROM settlements s
-      JOIN users payer ON s.payer_id = payer.id
-      JOIN users payee ON s.payee_id = payee.id
-      WHERE s.id = $1
-    `, [settlementId]);
-
-    await run(
-      'INSERT INTO notifications (user_id, type, title, message, related_id) VALUES ($1, $2, $3, $4, $5)',
-      [payee_id, 'settlement', 'Payment Received', `${req.user.name} paid you ${amount}`, settlementId]
-    );
-
-    res.status(201).json(settlement);
-  } catch (err) {
-    console.error('POST /settlements error:', err);
+    if (!mutual) return res.status(403).json({ error: 'Settlements require a shared group' });
+    const result = await withTransaction(async tx => {
+      const settlementId = await tx.run(
+        'INSERT INTO settlements (payer_id, payee_id, amount, group_id, note) VALUES ($1, $2, $3, $4, $5)',
+        [req.user.id, payeeId, centsToAmount(cents), group_id || null, typeof note === 'string' ? note.slice(0,500) : '']
+      );
+      const settlement = await tx.get(
+        'SELECT s.*, payer.name as payer_name, payee.name as payee_name FROM settlements s JOIN users payer ON s.payer_id = payer.id JOIN users payee ON s.payee_id = payee.id WHERE s.id = $1',
+        [settlementId]
+      );
+      await tx.run(
+        'INSERT INTO notifications (user_id, type, title, message, related_id) VALUES ($1, $2, $3, $4, $5)',
+        [payeeId, 'settlement', 'Payment Received', `${req.user.name} paid you ${centsToAmount(cents)}`, settlementId]
+      );
+      return settlement;
+    });
+    res.status(201).json(result);
+  } catch (error) {
+    console.error('POST /settlements error:', error);
     res.status(500).json({ error: 'Failed to create settlement' });
   }
 });
@@ -71,34 +84,9 @@ router.get('/balances', authenticate, async (req, res) => {
       WHERE payer_id = $1 OR payee_id = $1
     `, [req.user.id]);
 
-    const balances = {};
-
-    for (const exp of userExpenses) {
-      const otherId = exp.paid_by_id === req.user.id ? exp.user_id : exp.paid_by_id;
-      if (!balances[otherId]) balances[otherId] = 0;
-      if (exp.paid_by_id === req.user.id) {
-        balances[otherId] -= exp.amount;
-      } else {
-        balances[otherId] += exp.amount;
-      }
-    }
-
-    for (const s of userSettlements) {
-      const otherId = s.payer_id === req.user.id ? s.payee_id : s.payer_id;
-      if (!balances[otherId]) balances[otherId] = 0;
-      if (s.payer_id === req.user.id) {
-        balances[otherId] += s.amount;
-      } else {
-        balances[otherId] -= s.amount;
-      }
-    }
-
-    const result = Object.entries(balances)
-      .map(([userId, balance]) => ({
-        userId: parseInt(userId),
-        balance: Math.round(balance * 100) / 100
-      }))
-      .filter(b => Math.abs(b.balance) > 0.01);
+    // Positive balance means the other person owes this user; negative means the user owes them.
+    // Compute in integer cents to avoid floating-point accumulation errors.
+    const result = personalBalances(userExpenses, userSettlements, req.user.id);
 
     const userIds = result.map(b => b.userId);
     if (userIds.length === 0) return res.json([]);
@@ -131,8 +119,9 @@ router.get('/simplify', authenticate, async (req, res) => {
       FROM expenses e
       JOIN expense_splits es ON e.id = es.expense_id
       WHERE es.user_id != e.paid_by AND es.is_settled = 0
+      AND e.group_id IN (SELECT gm.group_id FROM group_members gm WHERE gm.user_id = $1)
       GROUP BY e.paid_by, es.user_id
-    `, []);
+    `, [req.user.id]);
 
     const net = {};
     for (const b of balances) {

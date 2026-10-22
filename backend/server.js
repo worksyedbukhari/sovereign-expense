@@ -4,6 +4,9 @@ const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const jwt = require('jsonwebtoken');
+const { configuredOrigins, permittedOrigin } = require('./utils/originPolicy');
+const { get } = require('./database');
 const { initDatabase } = require('./database');
 
 const authRoutes = require('./routes/auth');
@@ -23,17 +26,26 @@ async function startServer() {
 
   const app = express();
   const server = http.createServer(app);
+  const origins = configuredOrigins();
   const io = new Server(server, {
     cors: {
-      origin: '*',
+      origin: (origin, next) => next(null, !origin || origins.has(origin)),
       methods: ['GET', 'POST']
-    }
+    },
+    // WebSocket handshakes are not protected by browser CORS checks.
+    allowRequest: (request, next) => next(
+      null, permittedOrigin(request.headers.origin, request.headers.host, origins)
+    )
   });
 
   app.set('io', io);
 
-  app.use(cors());
-  app.use(express.json());
+  app.use(cors((req, next) => {
+    const origin = req.headers.origin;
+    const allowed = permittedOrigin(origin, req.headers.host, origins);
+    next(null, { origin: allowed && origin ? origin : false });
+  }));
+  app.use(express.json({ limit: '100kb' }));
 
   app.use('/api/auth', authRoutes);
   app.use('/api/groups', groupRoutes);
@@ -45,33 +57,64 @@ async function startServer() {
   app.use('/api/contacts', contactRoutes);
   app.use('/api/notifications', notificationRoutes);
 
-  io.on('connection', (socket) => {
-    console.log('User connected:', socket.id);
+  // Socket subscriptions require an authenticated account and active group membership.
+  io.use((socket, next) => {
+    try {
+      const token = socket.handshake.auth && socket.handshake.auth.token;
+      if (!token || !process.env.JWT_SECRET) return next(new Error('Authentication required'));
+      const user = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+      if (!Number.isInteger(user.id) || user.id <= 0) return next(new Error('Invalid identity'));
+      socket.data.userId = user.id;
+      socket.data.userName = typeof user.name === 'string' ? user.name : 'Member';
+      next();
+    } catch (error) {
+      next(new Error('Invalid authentication'));
+    }
+  });
 
-    socket.on('join_group', (groupId) => {
-      socket.join(`group_${groupId}`);
-      console.log(`User joined group_${groupId}`);
+  io.on('connection', (socket) => {
+    socket.join(`user_${socket.data.userId}`);
+    const canAccessGroup = async (groupId) => {
+      if (!Number.isSafeInteger(Number(groupId)) || Number(groupId) <= 0) return false;
+      const member = await get(
+        'SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2',
+        [groupId, socket.data.userId]
+      );
+      return Boolean(member);
+    };
+
+    socket.on('join_group', async (groupId, ack) => {
+      try {
+        if (!(await canAccessGroup(groupId))) {
+          if (typeof ack === 'function') ack({ error: 'Group access denied' });
+          return;
+        }
+        socket.join(`group_${Number(groupId)}`);
+        if (typeof ack === 'function') ack({ ok: true });
+      } catch (error) {
+        if (typeof ack === 'function') ack({ error: 'Unable to join group' });
+      }
     });
 
     socket.on('leave_group', (groupId) => {
-      socket.leave(`group_${groupId}`);
+      if (Number.isSafeInteger(Number(groupId)) && Number(groupId) > 0) {
+        socket.leave(`group_${Number(groupId)}`);
+      }
     });
 
-    socket.on('send_message', (data) => {
-      io.to(`group_${data.groupId}`).emit('new_message', data);
-    });
-
-    socket.on('typing', (data) => {
-      socket.to(`group_${data.groupId}`).emit('user_typing', data);
-    });
-
-    socket.on('stop_typing', (data) => {
-      socket.to(`group_${data.groupId}`).emit('user_stop_typing', data);
-    });
-
-    socket.on('disconnect', () => {
-      console.log('User disconnected:', socket.id);
-    });
+    // Messages are persisted and broadcast only by the authenticated REST endpoint;
+    // never relay arbitrary client-supplied message payloads.
+    const relayTyping = async (event, groupId) => {
+      try {
+        if (!socket.rooms.has(`group_${Number(groupId)}`) || !(await canAccessGroup(groupId))) {
+          socket.leave(`group_${Number(groupId)}`);
+          return;
+        }
+        socket.to(`group_${Number(groupId)}`).emit(event, { username: socket.data.userName });
+      } catch (_) { /* Do not relay on database failure. */ }
+    };
+    socket.on('typing', (data) => relayTyping('user_typing', data && data.groupId));
+    socket.on('stop_typing', (data) => relayTyping('user_stop_typing', data && data.groupId));
   });
 
   app.get('/api/health', (req, res) => {

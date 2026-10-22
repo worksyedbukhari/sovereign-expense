@@ -1,8 +1,29 @@
 const express = require('express');
-const { run, get, all } = require('../database');
+const { run, get, all, withTransaction } = require('../database');
 const authenticate = require('../middleware/auth');
+const { groupBalances } = require('../utils/balances');
 
 const router = express.Router();
+
+async function requireGroupAdmin(req, res, next) {
+  try {
+    const group = await get('SELECT creator_id FROM groups WHERE id = $1', [req.params.id]);
+    if (!group) return res.status(404).json({ error: 'Group not found' });
+    const membership = await get(
+      'SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2',
+      [req.params.id, req.user.id]
+    );
+    if (!membership || (membership.role !== 'admin' && group.creator_id !== req.user.id)) {
+      return res.status(403).json({ error: 'Only a group administrator can manage members' });
+    }
+    req.groupCreatorId = group.creator_id;
+    next();
+  } catch (error) {
+    console.error('Group authorization error:', error);
+    res.status(500).json({ error: 'Failed to authorize group access' });
+  }
+}
+
 
 router.get('/', authenticate, async (req, res) => {
   try {
@@ -23,25 +44,38 @@ router.get('/', authenticate, async (req, res) => {
 
 router.post('/', authenticate, async (req, res) => {
   try {
-    const { name, description, memberIds } = req.body;
-    if (!name) return res.status(400).json({ error: 'Group name is required' });
-
-    const groupId = await run('INSERT INTO groups (name, description, creator_id) VALUES ($1, $2, $3)', [name, description || '', req.user.id]);
-    await run('INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, $3)', [groupId, req.user.id, 'admin']);
-
-    if (memberIds && memberIds.length > 0) {
-      for (const memberId of memberIds) {
-        try {
-          await run('INSERT INTO group_members (group_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [groupId, memberId]);
-        } catch (e) { /* ignore duplicates */ }
-      }
+    const { name, description, memberIds = [] } = req.body || {};
+    if (typeof name !== 'string' || !name.trim() || name.length > 120) {
+      return res.status(400).json({ error: 'A group name of up to 120 characters is required' });
     }
-
-    const group = await get('SELECT * FROM groups WHERE id = $1', [groupId]);
+    if (!Array.isArray(memberIds) || memberIds.length > 100 ||
+        memberIds.some(id => !Number.isSafeInteger(Number(id)) || Number(id) < 1)) {
+      return res.status(400).json({ error: 'Invalid group members' });
+    }
+    const uniqueMembers = [...new Set(memberIds.map(Number))].filter(id => id !== req.user.id);
+    const group = await withTransaction(async tx => {
+      const groupId = await tx.run(
+        'INSERT INTO groups (name, description, creator_id) VALUES ($1, $2, $3)',
+        [name.trim(), typeof description === 'string' ? description.slice(0, 2000) : '', req.user.id]
+      );
+      await tx.run(
+        'INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, $3)',
+        [groupId, req.user.id, 'admin']
+      );
+      for (const memberId of uniqueMembers) {
+        await tx.run(
+          'INSERT INTO group_members (group_id, user_id) VALUES ($1, $2)',
+          [groupId, memberId]
+        );
+      }
+      return tx.get('SELECT * FROM groups WHERE id = $1', [groupId]);
+    });
     res.status(201).json(group);
   } catch (err) {
     console.error('POST /groups error:', err);
-    res.status(500).json({ error: 'Failed to create group' });
+    res.status(err.code === '23503' ? 400 : 500).json({
+      error: err.code === '23503' ? 'One or more group members do not exist' : 'Failed to create group'
+    });
   }
 });
 
@@ -91,8 +125,11 @@ router.delete('/:id', authenticate, async (req, res) => {
     if (!group) return res.status(404).json({ error: 'Group not found' });
     if (group.creator_id !== req.user.id) return res.status(403).json({ error: 'Only the creator can delete the group' });
 
-    await run('DELETE FROM group_members WHERE group_id = $1', [req.params.id]);
+    // Group members, expenses and messages cascade from the group deletion.
+    // Deleting the group in one database statement avoids partially deleted groups.
     await run('DELETE FROM groups WHERE id = $1', [req.params.id]);
+    const io = req.app.get('io');
+    if (io) io.in(`group_${Number(req.params.id)}`).socketsLeave(`group_${Number(req.params.id)}`);
     res.json({ message: 'Group deleted' });
   } catch (err) {
     console.error('DELETE /groups/:id error:', err);
@@ -100,9 +137,12 @@ router.delete('/:id', authenticate, async (req, res) => {
   }
 });
 
-router.post('/:id/members', authenticate, async (req, res) => {
+router.post('/:id/members', authenticate, requireGroupAdmin, async (req, res) => {
   try {
     const { userId } = req.body;
+    if (!Number.isSafeInteger(Number(userId)) || Number(userId) < 1) {
+      return res.status(400).json({ error: 'Valid user ID required' });
+    }
     const group = await get('SELECT * FROM groups WHERE id = $1', [req.params.id]);
     if (!group) return res.status(404).json({ error: 'Group not found' });
 
@@ -118,12 +158,20 @@ router.post('/:id/members', authenticate, async (req, res) => {
   }
 });
 
-router.delete('/:id/members/:userId', authenticate, async (req, res) => {
+router.delete('/:id/members/:userId', authenticate, requireGroupAdmin, async (req, res) => {
   try {
     const group = await get('SELECT * FROM groups WHERE id = $1', [req.params.id]);
     if (!group) return res.status(404).json({ error: 'Group not found' });
 
+    if (Number(req.params.userId) === req.groupCreatorId) {
+      return res.status(403).json({ error: 'Cannot remove the group creator' });
+    }
     await run('DELETE FROM group_members WHERE group_id = $1 AND user_id = $2', [req.params.id, req.params.userId]);
+    const io = req.app.get('io');
+    if (io) {
+      // Revoke already-connected sockets immediately, not only on their next event.
+      io.in(`user_${Number(req.params.userId)}`).socketsLeave(`group_${Number(req.params.id)}`);
+    }
     res.json({ message: 'Member removed' });
   } catch (err) {
     console.error('DELETE /groups/:id/members/:userId error:', err);
@@ -133,40 +181,34 @@ router.delete('/:id/members/:userId', authenticate, async (req, res) => {
 
 router.get('/:id/balances', authenticate, async (req, res) => {
   try {
-    const expenses = await all('SELECT * FROM expenses WHERE group_id = $1', [req.params.id]);
-    const balances = {};
+    const membership = await get(
+      'SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2',
+      [req.params.id, req.user.id]
+    );
+    if (!membership) return res.status(403).json({ error: 'Not a member of this group' });
 
-    for (const expense of expenses) {
-      const splits = await all('SELECT * FROM expense_splits WHERE expense_id = $1', [expense.id]);
-      if (!balances[expense.paid_by]) balances[expense.paid_by] = 0;
-
-      for (const split of splits) {
-        if (split.user_id === expense.paid_by) continue;
-        if (!balances[split.user_id]) balances[split.user_id] = 0;
-        if (!split.is_settled) {
-          balances[expense.paid_by] += split.amount;
-          balances[split.user_id] -= split.amount;
-        }
-      }
-    }
-
-    const members = await all(`
-      SELECT u.id, u.name
-      FROM users u
-      JOIN group_members gm ON u.id = gm.user_id
-      WHERE gm.group_id = $1
+    const rows = await all(`
+      SELECT e.paid_by, es.user_id, es.amount, es.is_settled
+      FROM expenses e
+      JOIN expense_splits es ON es.expense_id = e.id
+      WHERE e.group_id = $1 AND es.user_id != e.paid_by
     `, [req.params.id]);
+    const repayments = await all(
+      'SELECT payer_id, payee_id, amount FROM settlements WHERE group_id = $1',
+      [req.params.id]
+    );
+    const balances = groupBalances(rows, repayments);
+    if (!balances.length) return res.json([]);
 
-    const memberMap = {};
-    members.forEach(m => { memberMap[m.id] = m.name; });
-
-    const result = Object.entries(balances).map(([userId, balance]) => ({
-      userId: parseInt(userId),
-      name: memberMap[parseInt(userId)] || 'Unknown',
-      balance: Math.round(balance * 100) / 100
-    }));
-
-    res.json(result);
+    const users = await all(
+      'SELECT u.id, u.name FROM users u JOIN group_members gm ON gm.user_id = u.id WHERE gm.group_id = $1',
+      [req.params.id]
+    );
+    const memberMap = new Map(users.map(user => [user.id, user.name]));
+    res.json(balances.map(row => ({
+      ...row,
+      name: memberMap.get(row.userId) || 'Unknown'
+    })));
   } catch (err) {
     console.error('GET /groups/:id/balances error:', err);
     res.status(500).json({ error: 'Failed to fetch balances' });

@@ -27,8 +27,12 @@ export default function Chat() {
   const selectGroup = async (groupId) => {
     setSelectedGroup(groupId);
     if (socket) socket.disconnect();
-    socket = io(WS_URL, { transports: ['websocket'] });
-    socket.emit('join_group', groupId);
+    socket = io(WS_URL, {
+      transports: ['websocket'],
+      auth: { token: localStorage.getItem('token') }
+    });
+    socket.on('connect', () => socket.emit('join_group', groupId));
+    socket.on('connect_error', (error) => console.error('Chat connection rejected:', error.message));
     socket.on('new_message', (message) => setMessages(prev => [...prev, message]));
     socket.on('user_typing', (data) => { setTypingUser(data.username); setTyping(true); });
     socket.on('user_stop_typing', () => { setTyping(false); setTypingUser(''); });
@@ -37,20 +41,26 @@ export default function Chat() {
 
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); };
 
-  const sendMessage = (e) => {
+  const sendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedGroup) return;
-    socket.emit('send_message', { groupId: selectedGroup, content: newMessage.trim(), userId: user.id, username: user.name });
-    api.post(`/chat/${selectedGroup}`, { content: newMessage.trim() }).catch(console.error);
-    setNewMessage('');
-    socket.emit('stop_typing', { groupId: selectedGroup, username: user.name });
+    const message = newMessage.trim();
+    try {
+      // The REST endpoint authenticates the writer, persists the message,
+      // and broadcasts the saved record to the group.
+      await api.post(`/chat/${selectedGroup}`, { content: message });
+      setNewMessage('');
+      socket?.emit('stop_typing', { groupId: selectedGroup });
+    } catch (error) {
+      console.error('Failed to send message:', error);
+    }
   };
 
   const handleTyping = () => {
     if (!socket || !selectedGroup) return;
-    socket.emit('typing', { groupId: selectedGroup, username: user.name });
+    socket.emit('typing', { groupId: selectedGroup });
     clearTimeout(typingTimeout.current);
-    typingTimeout.current = setTimeout(() => socket.emit('stop_typing', { groupId: selectedGroup, username: user.name }), 2000);
+    typingTimeout.current = setTimeout(() => socket.emit('stop_typing', { groupId: selectedGroup }), 2000);
   };
 
   const selectedGroupData = groups.find(g => g.id === selectedGroup);

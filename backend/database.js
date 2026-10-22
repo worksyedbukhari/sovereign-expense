@@ -1,4 +1,10 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+
+// PostgreSQL NUMERIC amounts are returned as strings by default. This application
+// currently uses number-based arithmetic; constrain stored amounts to 14 digits
+// and parse them to maintain the existing JSON API while monetary calculations
+// are migrated to integer minor units.
+types.setTypeParser(1700, value => Number(value));
 
 let pool = null;
 
@@ -37,6 +43,9 @@ async function initDatabase() {
     )
   `);
 
+  await pool.query('ALTER TABLE otps ADD COLUMN IF NOT EXISTS verified INTEGER NOT NULL DEFAULT 0');
+  await pool.query('ALTER TABLE otps ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0');
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS groups (
       id SERIAL PRIMARY KEY,
@@ -65,7 +74,7 @@ async function initDatabase() {
       group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
       paid_by INTEGER NOT NULL REFERENCES users(id),
       description TEXT NOT NULL,
-      amount REAL NOT NULL,
+      amount NUMERIC(14,2) NOT NULL,
       currency TEXT DEFAULT 'USD',
       category TEXT DEFAULT 'General',
       split_type TEXT DEFAULT 'equal',
@@ -79,7 +88,7 @@ async function initDatabase() {
       id SERIAL PRIMARY KEY,
       expense_id INTEGER NOT NULL REFERENCES expenses(id) ON DELETE CASCADE,
       user_id INTEGER NOT NULL REFERENCES users(id),
-      amount REAL NOT NULL,
+      amount NUMERIC(14,2) NOT NULL,
       is_settled INTEGER DEFAULT 0,
       settled_at TIMESTAMP DEFAULT NULL
     )
@@ -90,7 +99,7 @@ async function initDatabase() {
       id SERIAL PRIMARY KEY,
       payer_id INTEGER NOT NULL REFERENCES users(id),
       payee_id INTEGER NOT NULL REFERENCES users(id),
-      amount REAL NOT NULL,
+      amount NUMERIC(14,2) NOT NULL,
       group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
       note TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -162,4 +171,46 @@ async function all(sql, params = []) {
   return result.rows;
 }
 
-module.exports = { initDatabase, run, get, all };
+async function withTransaction(work) {
+  if (!pool) throw new Error('Database has not been initialized');
+  const client = await pool.connect();
+  const tx = {
+    async run(sql, params = []) {
+      const converted = convertQuery(sql);
+      const insert = /^\s*INSERT/i.test(sql);
+      const result = await client.query(
+        insert ? converted + ' RETURNING id' : converted,
+        params
+      );
+      return insert ? (result.rows[0]?.id || 0) : 0;
+    },
+    async get(sql, params = []) {
+      const result = await client.query(convertQuery(sql), params);
+      return result.rows[0] || null;
+    },
+    async all(sql, params = []) {
+      const result = await client.query(convertQuery(sql), params);
+      return result.rows;
+    }
+  };
+  try {
+    await client.query('BEGIN');
+    const result = await work(tx);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function closeDatabase() {
+  if (!pool) return;
+  const currentPool = pool;
+  pool = null;
+  await currentPool.end();
+}
+
+module.exports = { initDatabase, closeDatabase, run, get, all, withTransaction };
