@@ -59,4 +59,14 @@ Node.js 20+ is required for the automated tests. No dependency installation or A
 
 Sovereign Expense is the collaborative, full-stack product. Sovereign Studio is a portable, dependency-free companion for modeling a split **before** recording an expense in the main application. Keeping them together encourages shared correctness tests, issue tracking, and genuine contributions without misrepresenting them as unrelated mature products.
 
+## License
+
+**Sovereign Studio**, including its own source files, styles and original vector mark under this directory, is licensed under the [MIT License](LICENSE).
+
+This **does not license the rest of the Sovereign Expense repository**. The original full-stack application's third-party code and asset review remains separate.
+
+## Quality checks
+
+GitHub Actions runs both the Node unit suite and an actual Chromium browser smoke test covering desktop and mobile interactions, CSV download, and absence of horizontal mobile overflow. Those automated tests do not replace comprehensive accessibility audits, performance profiling or manual visual review.
+
 Contributions and usability feedback are welcome. Use fictional data in any example. See the root [security policy](../../SECURITY.md) and [contributing guide](../../CONTRIBUTING.md).
