@@ -17,6 +17,10 @@ Sovereign Expense is a public project exploring a straightforward way for househ
 
 These are implemented project areas, **not a claim that every feature has passed end-to-end or security testing**.
 
+## Companion project: Sovereign Studio
+
+[Sovereign Studio](projects/sovereign-studio/README.md) is an independently developed, responsive settlement-planning tool within this repository. It runs entirely in the browser, uses integer-cent calculations, shows editable scenarios and suggested repayments, and exports CSV reports. It requires **no account, API key, or server** for calculations. It has its own scoped [MIT license](projects/sovereign-studio/LICENSE); this license **does not apply** to the original full-stack expense app, whose release and asset licensing review remain pending.
+
 ## Architecture
 
 | Component | Technology |
