@@ -13,3 +13,9 @@ fieldset{padding:0;border:0;margin:26px 0}legend,.field-block label{color:#a7b1b
 @media(max-width:740px){.shell{padding:0 20px}.topbar{min-height:82px}.brand{font-size:21px}.privacy-chip{display:none}.topnav{gap:15px;font-size:12px}.hero{padding:80px 0 25px}.hero h1{font-size:clamp(48px,11vw,75px);letter-spacing:-.07em}.hero-index{display:none}.hero-rule{margin-top:68px}.hero-copy{line-height:1.65}.section-intro h2{font-size:31px}.workspace-pill{display:none}.panel-top h3{font-size:21px}.editor,.insights,.settlement-panel{padding:22px}.editor-options{grid-template-columns:1fr 113px}.currency-field select{padding-left:9px;font-size:12px}.presets{gap:5px}.preset{font-size:10px;padding:7px 4px}.total-block strong{font-size:45px}.metrics strong{font-size:20px}.bars{grid-template-columns:1fr}.transfer-list{grid-template-columns:1fr}.settlement-bottom{align-items:flex-start;flex-direction:column}.principles{padding:100px 0}.principle-grid{grid-template-columns:1fr;gap:32px}.principle-grid p{max-width:100%}footer{flex-wrap:wrap}footer span:nth-child(2){display:none}}
 @media(max-width:400px){.topnav a:last-child{display:none}.hero h1{font-size:44px}.hero-actions{align-items:flex-start;flex-direction:column}.editor-options{grid-template-columns:1fr}.participant-row{grid-template-columns:minmax(0,1fr) minmax(0,.8fr) 32px}.participant-labels{grid-template-columns:1fr .8fr 32px}.person-field input,.amount-field input{padding-right:6px;font-size:12px}.person-field input{padding-left:25px}.editor-bottom>span{display:none}.settlement-title{align-items:flex-start;flex-direction:column}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation:none!important;transition:none!important}}
+
+/* Keep decorative glows inside the actual phone viewport, not merely clipped. */
+@media(max-width:740px){
+  .ambient-one{right:0;width:min(520px,100vw)}
+  .ambient-two{left:0;width:min(440px,100vw)}
+}
