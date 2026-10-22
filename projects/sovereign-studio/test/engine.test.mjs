@@ -63,3 +63,12 @@ test('supports display formatting for currencies with two decimals', () => {
   assert.ok(formatMoney(123456, 'USD').includes('1,234.56'));
   assert.ok(formatMoney(999, 'SAR').includes('9.99'));
 });
+
+test('CSV exports currency, scenario and negative numerical balances', () => {
+  const report = analyzeScenario(data(['10.00','0.00','0.00']));
+  const csv = exportScenarioCsv(report);
+  assert.ok(csv.includes('"Currency","USD"'));
+  assert.ok(csv.includes('"Scenario","Weekend trip"'));
+  assert.ok(csv.includes('"-3.33"') || csv.includes('"-3.34"'));
+  assert.ok(!csv.includes('"\'-3.33"'), 'Numeric negatives must stay numeric');
+});
