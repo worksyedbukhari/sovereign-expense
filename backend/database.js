@@ -206,4 +206,11 @@ async function withTransaction(work) {
   }
 }
 
-module.exports = { initDatabase, run, get, all, withTransaction };
+async function closeDatabase() {
+  if (!pool) return;
+  const currentPool = pool;
+  pool = null;
+  await currentPool.end();
+}
+
+module.exports = { initDatabase, closeDatabase, run, get, all, withTransaction };
