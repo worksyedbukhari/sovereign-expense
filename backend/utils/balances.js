@@ -41,8 +41,8 @@ function personalBalances(expenses, settlements, currentUserId) {
   return [...net.entries()].filter(([,cents]) => cents !== 0)
     .map(([userId,cents]) => ({ userId, balance: cents / 100 }));
 }
-function groupBalances(splitRows) {
-  if (!Array.isArray(splitRows)) throw new TypeError('Expected group split rows');
+function groupBalances(splitRows, settlements = []) {
+  if (!Array.isArray(splitRows) || !Array.isArray(settlements)) throw new TypeError('Expected group split and settlement rows');
   const net = new Map();
   function add(userId, delta) {
     if (!Number.isSafeInteger(userId) || userId < 1) throw new Error('Invalid user ID');
@@ -58,6 +58,17 @@ function groupBalances(splitRows) {
     const cents = amountToCents(split.amount);
     add(payerId, cents);
     add(borrowerId, -cents);
+  }
+  // Payments within this group reduce the debtor's negative balance and
+  // the creditor's positive balance. Unattributed cross-group payments are
+  // intentionally excluded rather than assigned to a guessed group.
+  for (const payment of settlements) {
+    const payerId = Number(payment.payer_id);
+    const payeeId = Number(payment.payee_id);
+    if (payerId === payeeId) throw new Error('Settlement requires two users');
+    const cents = amountToCents(payment.amount);
+    add(payerId, cents);
+    add(payeeId, -cents);
   }
   return [...net.entries()].filter(([,cents]) => cents !== 0)
     .map(([userId, cents]) => ({ userId, balance: cents / 100 }));
