@@ -62,6 +62,8 @@ function makeInput(person, field, labelText, className) {
   }
   input.addEventListener('input', () => {
     person[field] = input.value;
+    selectedPreset = null;
+    syncPresets();
     refresh();
   });
   wrapper.append(input);
