@@ -45,6 +45,8 @@ This software is undergoing security and financial-correctness work. Do **not** 
 
 You can inspect the [security and open-source readiness work in PR #1](https://github.com/worksyedbukhari/sovereign-expense/pull/1). Its CI checks do **not** replace end-to-end tests or an independent security audit.
 
+For a verifiable list of deployment, audit, licensing, and review requirements, see [Release gates](docs/RELEASE_GATES.md).
+
 ## Roadmap
 
 - [x] Publish an inspectable repository and document the existing project
