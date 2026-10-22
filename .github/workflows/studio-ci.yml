@@ -1,0 +1,29 @@
+name: Sovereign Studio CI
+on:
+  pull_request:
+    paths:
+      - 'projects/sovereign-studio/**'
+      - '.github/workflows/studio-ci.yml'
+  push:
+    branches:
+      - 'feature/sovereign-studio'
+    paths:
+      - 'projects/sovereign-studio/**'
+      - '.github/workflows/studio-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  studio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and unit tests
+        run: npm run check --prefix projects/sovereign-studio
