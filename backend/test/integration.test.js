@@ -62,6 +62,16 @@ test('staging PostgreSQL: account, group, expense and settlement permissions', {
 
     assert.equal((await request('GET', '/api/groups', null)).status, 401, 'Anonymous group access denied');
 
+    const forgedToken = jwt.sign({id: alice, name: 'Fake'}, 'incorrect-secret', {expiresIn:'5m'});
+    assert.equal((await request('GET', '/api/groups', forgedToken)).status, 401,
+      'Forged JWTs are rejected');
+    assert.equal((await request('POST', '/api/auth/social-login', null, {
+      uid: 'attacker-chosen-id', email: 'someone@example.invalid'
+    })).status, 501, 'Unverified social login is disabled');
+    assert.equal((await request('POST', '/api/auth/send-otp', null, {
+      target: `ci-${marker}-alice@example.invalid`, purpose: 'register'
+    })).status, 503, 'Registration OTP fails closed without configured SMTP');
+
     const invalidGroup = await request('POST', '/api/groups', aliceToken, {
       name: 'Should not exist', memberIds: [2147483647]
     });
